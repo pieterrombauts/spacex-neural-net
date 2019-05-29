@@ -1,4 +1,5 @@
-﻿using MathNet.Numerics.LinearAlgebra;
+﻿//using MathNet.Numerics.LinearAlgebra;
+using accord = Accord.Math;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -12,14 +13,15 @@ namespace SpaceXNeuralNetwork
 {
 	class Booster
 	{
-		private Matrix<double> weights1;
-		private Matrix<double> weights2;
+		private double[,] weights1;
+		private double[,] weights2;
 		private Texture2D boosterTexture;
 		private Color tint;
 		private Vector2 boosterPosition;
 		private Vector2 boosterVelocity;
 		private double boosterRotation;
 		private double angularVelocity;
+		private float layerDepth;
 		private float boosterMass;
 		private float monopropellant;
 		private float fuel;
@@ -28,7 +30,8 @@ namespace SpaceXNeuralNetwork
 		public Booster(Texture2D boosterTexture, Vector2 boosterPosition, Vector2 boosterVelocity, double boosterRotation, float boosterMass, float monopropellant, float fuel)
 		{
 			this.boosterTexture = boosterTexture;
-			this.tint = Color.White;
+			tint = Color.White;
+			layerDepth = 0.5f;
 			this.boosterPosition = boosterPosition;
 			this.boosterVelocity = boosterVelocity;
 			this.boosterRotation = boosterRotation;
@@ -37,8 +40,26 @@ namespace SpaceXNeuralNetwork
 			this.fuel = fuel;
 			angularVelocity = 0f;
 			gameScore = 0f;
-			weights1 = Matrix<double>.Build.Random(8, 7);
-			weights2 = Matrix<double>.Build.Random(3, 8);
+			weights1 = accord.Matrix.Random(8, 8, -1d, 1d);
+			weights2 = accord.Matrix.Random(3, 8, -1d, 1d);
+		}
+
+		public Booster(Texture2D boosterTexture, Vector2 boosterPosition, Vector2 boosterVelocity, double boosterRotation, float boosterMass, float monopropellant, float fuel, double[,] weights1, double[,] weights2)
+		{
+			this.boosterTexture = boosterTexture;
+			this.tint = Color.White;
+			layerDepth = 0.5f;
+			this.boosterPosition = boosterPosition;
+			this.boosterVelocity = boosterVelocity;
+			this.boosterRotation = boosterRotation;
+			this.boosterMass = boosterMass;
+			this.monopropellant = monopropellant;
+			this.fuel = fuel;
+			this.weights1 = weights1;
+			this.weights2 = weights2;
+			angularVelocity = 0f;
+			gameScore = 0f;
+			
 		}
 
 		public void ChangeVelocity(Vector2 accelerationVector)
@@ -75,11 +96,21 @@ namespace SpaceXNeuralNetwork
 
 		public void ChangeGameScore(float gameScoreChange) { gameScore += gameScoreChange; }
 
+		public void SetGameScore(float gameScoreValue) { gameScore = gameScoreValue; }
+
 		public void ChangeTint(Color tintChange) { tint = tintChange; }
+
+		public void ChangeLayerDepth(float layerDepth) { this.layerDepth = layerDepth; }
+
+		public void SetWeights1(double[,] weights1) { this.weights1 = weights1; }
+
+		public void SetWeights2(double[,] weights2) { this.weights2 = weights2; }
 
 		public Texture2D GetBoosterTexture() { return boosterTexture; }
 
 		public Color GetTint() { return tint; }
+
+		public float GetLayerDepth() { return layerDepth; }
 
 		public Vector2 GetBoosterPosition() { return boosterPosition; }
 
@@ -97,6 +128,22 @@ namespace SpaceXNeuralNetwork
 
 		public float GetGameScore() { return gameScore; }
 
+		public double[,] GetWeights1() { return weights1; }
+
+		public double[,] GetWeights2() { return weights2; }
+
+		public double[] GetInputs()
+		{
+			double[] inputs = { Sigmoid(boosterVelocity.X), Sigmoid(boosterVelocity.Y), Sigmoid(boosterPosition.X - Game1.GetLandingPosition().X),
+								Sigmoid(Game1.GetLandingPosition().Y - boosterPosition.Y), Sigmoid(angularVelocity), Sigmoid(boosterRotation), Sigmoid(monopropellant), Sigmoid(fuel) };
+			return inputs;
+		}
+
+		public static double Sigmoid(double x)
+		{
+			return 1 / (1 + Math.Exp(-x));
+		}
+
 	}
 
 	class BoosterList : List<Booster>
@@ -104,6 +151,11 @@ namespace SpaceXNeuralNetwork
 		public void AddBooster(Texture2D boosterTexture, Vector2 boosterPosition, Vector2 boosterVelocity, double boosterRotation, float boosterMass, float monopropellant, float fuel)
 		{
 			this.Add(new Booster(boosterTexture, boosterPosition, boosterVelocity, boosterRotation, boosterMass, monopropellant, fuel));
+		}
+
+		public void AddBooster(Texture2D boosterTexture, Vector2 boosterPosition, Vector2 boosterVelocity, double boosterRotation, float boosterMass, float monopropellant, float fuel, double[,] weights1, double[,] weights2)
+		{
+			this.Add(new Booster(boosterTexture, boosterPosition, boosterVelocity, boosterRotation, boosterMass, monopropellant, fuel, weights1, weights2));
 		}
 
 		public void Update()
@@ -115,7 +167,7 @@ namespace SpaceXNeuralNetwork
 		{
 			foreach (Booster b in this)
 			{	
-				spriteBatch.Draw(b.GetBoosterTexture(), b.GetBoosterPosition(), null, b.GetTint(), (float)b.GetBoosterRotation(), new Vector2(b.GetBoosterTexture().Width / 2, b.GetBoosterTexture().Height / 2), Vector2.One, SpriteEffects.None, 0f);
+				spriteBatch.Draw(b.GetBoosterTexture(), b.GetBoosterPosition(), null, b.GetTint(), (float)b.GetBoosterRotation(), new Vector2(b.GetBoosterTexture().Width / 2, b.GetBoosterTexture().Height / 2), Vector2.One, SpriteEffects.None, b.GetLayerDepth());
 			}
 		}
 	}
