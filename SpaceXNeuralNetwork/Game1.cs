@@ -2,6 +2,7 @@
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System;
+using System.Diagnostics;
 
 namespace SpaceXNeuralNetwork
 {
@@ -18,6 +19,8 @@ namespace SpaceXNeuralNetwork
 		SpriteFont arial;
 		Texture2D backgroundTexture;
 		Texture2D landingTexture;
+		Texture2D longLineTexture;
+		Texture2D shortLineTexture;
 		static Vector2 landingPosition;
 		bool generationComplete;
         float mainRocketThrust;
@@ -41,8 +44,9 @@ namespace SpaceXNeuralNetwork
 		int generation = 1;
 		int currentlyFlying;
 		int successes = 0;
-		float bestGameScoreLastGen = -9999;
-		float highestGameScore = -9999;
+		int stagnantCtr = 0;
+		float bestGameScoreLastGen = 0;
+		float highestGameScore = 0;
 
 		enum GameState
 		{
@@ -75,10 +79,13 @@ namespace SpaceXNeuralNetwork
         {
 			// TODO: Add your initialization logic here
 			//initParams = new object[] { new Vector2(graphics.PreferredBackBufferWidth / 2, graphics.PreferredBackBufferHeight / 2), new Vector2(0f, 0f), 0f, 1f, 4f, 10f };
-
-			initParams = new object[] { new Vector2(graphics.PreferredBackBufferWidth / 3, graphics.PreferredBackBufferHeight / 3), new Vector2(0f, 0f), 0f, 10f, 4f, 10f };
+			Random rnd = new Random();
+			//initParams = 1. Position, 2. Velocity, 3. Rotation, 4. Mass, 5. Monopropellant, 6. Fuel
+			//initParams = new object[] { new Vector2(graphics.PreferredBackBufferWidth / 3, graphics.PreferredBackBufferHeight / 3), new Vector2(0f, 0f), 0f, 10f, 4f, 10f };
+			initParams = new object[] { new Vector2(rnd.Next(100, graphics.PreferredBackBufferWidth - 100), rnd.Next(100, graphics.PreferredBackBufferHeight / 2)), new Vector2((float)rnd.NextDouble() * 200 - 100, (float)rnd.NextDouble() * 100 - 50), (float)(rnd.NextDouble() * 0.4 - 0.2), 10f, 4f, 10f };
 			boosterList = new BoosterList();
-			landingPosition = new Vector2(graphics.PreferredBackBufferWidth / 2, graphics.PreferredBackBufferHeight - 200);
+			//rnd.Next(Content.Load<Texture2D>("landing pad").Width / 2, graphics.PreferredBackBufferWidth - (Content.Load<Texture2D>("landing pad").Width / 2))
+			landingPosition = new Vector2(rnd.Next(Content.Load<Texture2D>("landing pad").Width / 2, graphics.PreferredBackBufferWidth - (Content.Load<Texture2D>("landing pad").Width / 2)), graphics.PreferredBackBufferHeight - 200);
 			mainRocketThrust = 15f;
 			directionalThrust = 5f;
 			angularAcceleration = 0f;
@@ -88,25 +95,25 @@ namespace SpaceXNeuralNetwork
 			generationComplete = false;
 
 			populationSize = 500;
-			eliteIndividuals = 2;
-			tournamentSize = 3;
+			eliteIndividuals = 10;
 			numNewIndividuals = 20;
-			numEliteChildren = 10;
+			numEliteChildren = 30;
 			crossoverRate = 0.6f;
 			crossover1Section = new int[] { 4, 7, 0, 7 };
 			crossover2Section = new int[] { 4, 7, 0, 2 };
-			mutationRate = 0.6f;
+			mutationRate = 0.4f;
 
 			base.Initialize();
         }
 
 		private void Reset()
 		{
-			
+			Random rnd = new Random();
 			if (currentGameState == GameState.NeuralNet)
 			{
 				currentlyFlying = populationSize;
-				boosterList = ANN.BreedNewGeneration(boosterList, initParams, eliteIndividuals, tournamentSize, crossoverRate, crossover1Section, crossover2Section, mutationRate, numNewIndividuals, numEliteChildren);
+				landingPosition = new Vector2(rnd.Next(Content.Load<Texture2D>("landing pad").Width / 2, graphics.PreferredBackBufferWidth - (Content.Load<Texture2D>("landing pad").Width / 2)), graphics.PreferredBackBufferHeight - 200);
+				boosterList = ANN.BreedNewGeneration(boosterList, initParams, eliteIndividuals, crossoverRate, crossover1Section, crossover2Section, mutationRate, numNewIndividuals, numEliteChildren);
 			}
 			else if (currentGameState == GameState.PlayerControlled)
 			{
@@ -132,6 +139,8 @@ namespace SpaceXNeuralNetwork
 			backgroundTexture = Content.Load<Texture2D>("ocean background");
 			boosterTexture = Content.Load<Texture2D>("booster");
 			landingTexture = Content.Load<Texture2D>("landing pad");
+			longLineTexture = Content.Load<Texture2D>("long line");
+			shortLineTexture = Content.Load<Texture2D>("short line");
 
 			IsMouseVisible = true;
 
@@ -225,13 +234,14 @@ namespace SpaceXNeuralNetwork
 								&& (b.GetBoosterPosition().X < (landingPosition.X + landingTexture.Width / 2 - 20))
 								&& Math.Abs(b.GetBoosterRotation()) < 0.1f)
 							{
+								successes++;
 								b.ChangeTint(Color.LightGreen);
 							}
 
 							b.ChangeGameScore(-Math.Abs(b.GetBoosterPosition().X - landingPosition.X));
 							b.ChangeGameScore(-b.GetBoosterVelocity().Y);
 							b.ChangeGameScore(-Math.Abs(b.GetBoosterVelocity().X));
-							b.ChangeGameScore(-Math.Abs((float)b.GetBoosterRotation()));
+							b.ChangeGameScore(-Math.Abs((float)b.GetBoosterRotation() * 10));
 							b.ChangeGameScore(-((float)initParams[5] - b.GetFuel()));
 							b.ChangeGameScore(-((float)initParams[4] - b.GetMonopropellant()));
 							b.SetGameScore(1000 / Math.Abs(b.GetGameScore()));
@@ -246,16 +256,39 @@ namespace SpaceXNeuralNetwork
 				}
 				else if (generationComplete == true)
 				{
-					successes = 0;
-					bestGameScoreLastGen = -9999;
-					foreach (Booster b in boosterList)
-					{
-						if (b.GetGameScore() > 0) { successes++; }
-						if (b.GetGameScore() > bestGameScoreLastGen) { bestGameScoreLastGen = b.GetGameScore(); }
-						if (b.GetGameScore() > highestGameScore) { highestGameScore = b.GetGameScore(); }
-					}
 					if (currentGameState == GameState.NeuralNet)
 					{
+						float closestBoosterDist = 10000;
+						successes = 0;
+						bestGameScoreLastGen = 0;
+						stagnantCtr++;
+						foreach (Booster b in boosterList)
+						{
+							if (Math.Abs(b.GetBoosterPosition().X - landingPosition.X) < closestBoosterDist)
+							{
+								closestBoosterDist = Math.Abs(b.GetBoosterPosition().X - landingPosition.X);
+							}
+							if (b.GetGameScore() > bestGameScoreLastGen) { bestGameScoreLastGen = b.GetGameScore(); }
+							if (b.GetGameScore() > highestGameScore)
+							{
+								stagnantCtr = 0;
+								highestGameScore = b.GetGameScore();
+							}
+							
+						}
+						using (System.IO.StreamWriter file = new System.IO.StreamWriter(@"D:\Programs\SpaceX Neural Net\neuralnetstats.txt", true))
+						{
+							file.WriteLine(closestBoosterDist + "," + bestGameScoreLastGen + "," + highestGameScore + "," + successes);
+						}
+						if (generation > 1)
+						{
+							for (int i = 0; i < eliteIndividuals; i++)
+							{
+								Debug.Print("Elite individual " + (i + 1) + " landed the next round with a position of " + boosterList[i].GetBoosterPosition().X + ", a y-velocity of " + boosterList[i].GetBoosterVelocity().Y +
+								", a rotation of " + boosterList[i].GetBoosterRotation() + ", with " + boosterList[i].GetFuel() + " fuel left and " + boosterList[i].GetMonopropellant() + " mono left, with a score of " + boosterList[i].GetGameScore() +
+								"and weights1 of " + boosterList[i].GetWeights1()[0,0] + ", " + boosterList[i].GetWeights1()[0, 1] + ", " + boosterList[i].GetWeights1()[0, 2] + ", " + boosterList[i].GetWeights1()[0, 3] + ", " + boosterList[i].GetWeights1()[0, 4]);
+							}
+						}
 						generation++;
 						Reset();
 					}
@@ -308,7 +341,7 @@ namespace SpaceXNeuralNetwork
 					spriteBatch.DrawString(arial, "Generation: " + generation, new Vector2(50, 30), Color.Black);
 					spriteBatch.DrawString(arial, "Successes: " + successes + "/" + populationSize, new Vector2(50, 50), Color.Black);
 					spriteBatch.DrawString(arial, "Best Score in Last Gen: " + bestGameScoreLastGen, new Vector2(50, 70), Color.Black);
-					spriteBatch.DrawString(arial, "Highest Overall Score: " + highestGameScore, new Vector2(50, 90), Color.Black);
+					spriteBatch.DrawString(arial, "Highest Overall Score: " + highestGameScore + " | Stagnant for: " + stagnantCtr, new Vector2(50, 90), Color.Black);
 					spriteBatch.DrawString(arial, "Generation Complete? " + generationComplete, new Vector2(50, 110), Color.Black);
 					currentlyFlying = 0;
 					foreach (Booster b in boosterList)
@@ -317,6 +350,14 @@ namespace SpaceXNeuralNetwork
 					}
 					spriteBatch.DrawString(arial, "Currently Flying: " + currentlyFlying + "/" + populationSize, new Vector2(50, 130), Color.Black);
 					spriteBatch.Draw(landingTexture, landingPosition, null, Color.White, 0f, new Vector2(landingTexture.Width / 2, landingTexture.Height / 2), Vector2.One, SpriteEffects.None, 0.7f);
+					for (int i = 0; i < graphics.PreferredBackBufferWidth; i = i + 100)
+					{
+						spriteBatch.Draw(longLineTexture, new Vector2(i, graphics.PreferredBackBufferHeight - 300), null, Color.White, 0f, new Vector2(longLineTexture.Width / 2, longLineTexture.Height / 2), Vector2.One, SpriteEffects.None, 0f);
+					}
+					for (int i = 50; i < graphics.PreferredBackBufferWidth; i = i + 100)
+					{
+						spriteBatch.Draw(shortLineTexture, new Vector2(i, graphics.PreferredBackBufferHeight - 300), null, Color.White, 0f, new Vector2(shortLineTexture.Width / 2, shortLineTexture.Height / 2), Vector2.One, SpriteEffects.None, 0f);
+					}
 					boosterList.Draw(spriteBatch);
 					break;
 				case GameState.PlayerControlled:

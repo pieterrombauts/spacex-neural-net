@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.Xna.Framework;
+using System.Diagnostics;
 
 namespace SpaceXNeuralNetwork
 {
@@ -30,7 +31,7 @@ namespace SpaceXNeuralNetwork
 			return outputs;
 		}
 
-		public static BoosterList BreedNewGeneration(BoosterList currentGen, object[] initParams, int eliteIndividuals, int tournamentSize, float crossoverRate, int[] crossover1Section, int[] crossover2Section, float mutationRate, int numNewIndividuals, int numEliteChildren)
+		public static BoosterList BreedNewGeneration(BoosterList currentGen, object[] initParams, int eliteIndividuals, float crossoverRate, int[] crossover1Section, int[] crossover2Section, float mutationRate, int numNewIndividuals, int numEliteChildren)
 		{
 			Random rnd = new Random(DateTime.Now.Millisecond);
 			BoosterList newGeneration = new BoosterList();
@@ -39,8 +40,11 @@ namespace SpaceXNeuralNetwork
 			for (int i = 0; i < eliteIndividuals; i++)
 			{
 				Booster elite = currentGen[i];
+				Debug.Print("Elite individual " + (i + 1) + " landed with a position of " + elite.GetBoosterPosition().X + ", a y-velocity of " + elite.GetBoosterVelocity().Y +
+							", a rotation of " + elite.GetBoosterRotation() + ", with " + elite.GetFuel() + " fuel left and " + elite.GetMonopropellant() + " mono left, with a score of " + elite.GetGameScore() +
+							"and weights1 of " + elite.GetWeights1()[0, 0] + ", " + elite.GetWeights1()[0, 1] + ", " + elite.GetWeights1()[0, 2] + ", " + elite.GetWeights1()[0, 3] + ", " + elite.GetWeights1()[0, 4]);
 				newGeneration.AddBooster(elite.GetBoosterTexture(), (Vector2)initParams[0], (Vector2)initParams[1], (float)initParams[2], (float)initParams[3], (float)initParams[4], (float)initParams[5], elite.GetWeights1(), elite.GetWeights2());
-				newGeneration[i].ChangeTint(Color.LightBlue);
+				newGeneration[i].ChangeTint(Color.Blue);
 				newGeneration[i].ChangeLayerDepth(0f);
 			}
 
@@ -48,30 +52,38 @@ namespace SpaceXNeuralNetwork
 			{
 				for (int j = 0; j < eliteIndividuals; j++)
 				{
-					newGeneration.AddRange(CreateChildren(rnd, currentGen, newGeneration[j], TournamentSelection(rnd, currentGen, tournamentSize), initParams, tournamentSize, crossoverRate, crossover1Section, crossover2Section, mutationRate));
+					newGeneration.AddRange(CreateChildren(rnd, currentGen, newGeneration[j], RouletteSelection(rnd, currentGen), initParams, crossoverRate, crossover1Section, crossover2Section, mutationRate));
 				}
+			}
+
+			for (int i = eliteIndividuals; i < numEliteChildren; i++)
+			{
+				newGeneration[i].ChangeTint(Color.Purple);
+				newGeneration[i].ChangeLayerDepth(0.1f);
 			}
 
 			while(newGeneration.Count() < (currentGen.Count() - numNewIndividuals))
 			{
-				newGeneration.AddRange(CreateChildren(rnd, currentGen, TournamentSelection(rnd, currentGen, tournamentSize), TournamentSelection(rnd, currentGen, tournamentSize), initParams, tournamentSize, crossoverRate, crossover1Section, crossover2Section, mutationRate));
+				newGeneration.AddRange(CreateChildren(rnd, currentGen, RouletteSelection(rnd, currentGen), RouletteSelection(rnd, currentGen), initParams, crossoverRate, crossover1Section, crossover2Section, mutationRate));
 			}
 
 			while(newGeneration.Count() < currentGen.Count())
 			{
 				newGeneration.AddBooster(newGeneration[0].GetBoosterTexture(), (Vector2)initParams[0], (Vector2)initParams[1], (float)initParams[2], (float)initParams[3], (float)initParams[4], (float)initParams[5]);
+				newGeneration[newGeneration.Count() - 1].ChangeTint(Color.Yellow);
+				newGeneration[newGeneration.Count() - 1].ChangeLayerDepth(0.2f);
 			}
 
 			return newGeneration;
 		}
 
-		private static BoosterList CreateChildren(Random rnd, BoosterList currentGen, Booster parent1, Booster parent2, object[] initParams, int tournamentSize, float crossoverRate, int[] crossover1Section, int[] crossover2Section, float mutationRate)
+		private static BoosterList CreateChildren(Random rnd, BoosterList currentGen, Booster parent1, Booster parent2, object[] initParams, float crossoverRate, int[] crossover1Section, int[] crossover2Section, float mutationRate)
 		{
 			BoosterList children = new BoosterList();
-			double[,] child1Weights1 = parent1.GetWeights1();
-			double[,] child1Weights2 = parent1.GetWeights2();
-			double[,] child2Weights1 = parent2.GetWeights1();
-			double[,] child2Weights2 = parent2.GetWeights2();
+			double[,] child1Weights1 = accord.Matrix.Copy(parent1.GetWeights1());
+			double[,] child1Weights2 = accord.Matrix.Copy(parent1.GetWeights2());
+			double[,] child2Weights1 = accord.Matrix.Copy(parent2.GetWeights1());
+			double[,] child2Weights2 = accord.Matrix.Copy(parent2.GetWeights2());
 			double[,] temp;
 
 			if (rnd.NextDouble() <= crossoverRate)
@@ -108,31 +120,37 @@ namespace SpaceXNeuralNetwork
 			return children;
 		}
 
-		private static int[] GetColumnIndices(double[,] matrix)
-		{
-			int index = 0;
-			int[] columnIndices = new int[accord.Matrix.Columns(matrix) / 2];
-			for (int i = 0; i < accord.Matrix.Columns(matrix); i++)
-			{
-				if (i % 2 == 0)
-				{
-					columnIndices[index] = i;
-					index++;
-				}
-				
-			}
-			return columnIndices;
-		}
-
 		private static double[,] MutateMatrix(Random rnd, double[,] matrix, float mutationRate)
 		{
 			int numElementsToMutate = (int) Math.Floor(mutationRate * accord.Matrix.GetNumberOfElements(matrix));
 
 			for (int i = 0; i < numElementsToMutate; i++)
 			{
-				matrix[rnd.Next(0, accord.Matrix.Rows(matrix)), rnd.Next(0, accord.Matrix.Columns(matrix))] = rnd.NextDouble() * (1 - (-1)) + (-1);
+				matrix[rnd.Next(0, accord.Matrix.Rows(matrix)), rnd.Next(0, accord.Matrix.Columns(matrix))] = rnd.NextDouble() * 2 + (-1);
 			}
 			return matrix;
+		}
+
+		private static Booster RouletteSelection(Random rnd, BoosterList currentGen)
+		{
+			float sumOfFitness = 0;
+			int fixedPoint;
+			float partialSum = 0;
+
+			foreach (Booster b in currentGen)
+			{
+				sumOfFitness += b.GetGameScore();
+			}
+
+			fixedPoint = rnd.Next((int)sumOfFitness);
+
+			foreach (Booster b in currentGen)
+			{
+				partialSum += b.GetGameScore();
+				if (partialSum > fixedPoint) return b;
+			}
+
+			return currentGen[0];
 		}
 
 		private static Booster TournamentSelection(Random rnd, BoosterList currentGen, int tournamentSize)
